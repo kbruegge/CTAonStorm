@@ -1,14 +1,15 @@
 """
-Word count topology
+Event count topology
 """
 
 from streamparse import Grouping, Topology
 
-from bolts.wordcount import WordCountBolt
-from spouts.words import WordSpout
+from bolts.wordcount import HillasBolt, RecoBolt, EmptyBolt
+from spouts.words import EventSpout
 
 
 class WordCount(Topology):
-    word_spout = WordSpout.spec()
-    count_bolt = WordCountBolt.spec(inputs={word_spout: Grouping.fields('word')},
-                                    par=2)
+    word_spout = EventSpout.spec()
+    hillas_bolt = HillasBolt.spec(inputs=[word_spout])
+    empty = RecoBolt.spec(inputs=[hillas_bolt])
+    # reco_bolt = RecoBolt.spec(inputs={hillas_bolt: Grouping.LOCAL_OR_SHUFFLE}, par=2)

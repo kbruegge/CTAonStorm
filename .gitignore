@@ -6,6 +6,7 @@ __pycache__/
 #streamparse
 _build/
 config.json
+logs/*
 
 # C extensions
 *.so
