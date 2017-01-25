@@ -13,7 +13,7 @@ from astropy import units as u
 import astropy
 # import simplejson
 
-file_path = '/Users/kbruegge/Development/stormcta/_resources/gamma_test.simtel.gz'
+file_path = '/home/kbruegge/gamma_test.simtel.gz'
 
 
 # def decode_unit(dct):

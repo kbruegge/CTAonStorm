@@ -5,15 +5,18 @@ import time
 from ctapipe.io.hessio import hessio_event_source
 import copy
 import numpy as np
+import os
 
 
-file_path = '/Users/kbruegge/Development/stormcta/_resources/gamma_test.simtel.gz'
+file_path = '/home/kbruegge/gamma_test.simtel.gz'
 
 
 class EventSpout(Spout):
     outputs = ['event']
 
     def initialize(self, stormconf, context):
+        self.logger.info('current dir {}'.format(os.getcwd()))
+        self.logger.info('current env {}'.format(os.getenv()))
         source = hessio_event_source(file_path, max_events=7)
         event_list = list(copy.deepcopy(e) for e in source)
         events = []
