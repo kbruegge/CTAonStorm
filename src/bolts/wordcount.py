@@ -1,46 +1,79 @@
-# import os
-# from collections import Counter
 from ctapipe.io.hessio import hessio_event_source
-from streamparse import Bolt
+from streamparse import Bolt, Stream
 from ctapipe.image.cleaning import tailcuts_clean
 from ctapipe.io import CameraGeometry
-from ctapipe.image.hillas import hillas_parameters, HillasParameterizationError, MomentParameters
+from ctapipe.image.hillas import hillas_parameters, \
+                                 HillasParameterizationError, \
+                                 MomentParameters
+
 from ctapipe.reco.FitGammaHillas import FitGammaHillas
 import numpy as np
 
 from astropy import units as u
 import astropy
-import simplejson
+# import simplejson
 
 file_path = '/Users/kbruegge/Development/stormcta/_resources/gamma_test.simtel.gz'
 
 
-def decode_unit(dct):
-    if '__unit__' in dct:
-        return dct['__value__']*astropy.units.Unit(dct['__unit__'])
+# def decode_unit(dct):
+#     if '__unit__' in dct:
+#         return dct['__value__']*astropy.units.Unit(dct['__unit__'])
 
 
-def unit_serializer(obj):
-    if isinstance(obj, astropy.units.Quantity):
-        return {'__value__': obj.value, '__unit__': obj.unit.name}
-    else:
-        return simplejson.JSONEncoder.default(obj)
+def deserialize_hillas_moment(moments):
+    r = []
+    for dct in moments:
+        if '__unit__' in dct:
+            r.append(dct['__value__']*astropy.units.Unit(dct['__unit__']))
+        else:
+            r.append(dct['__value__'])
+    return MomentParameters._make(r)
 
 
-class EmptyBolt(Bolt):
+def deserialize_hillas_dict(dct):
+    hillas_dict = {}
+    for tel_id, moment in dct.items():
+        hillas_dict[int(tel_id)] = deserialize_hillas_moment(moment)
+    return hillas_dict
 
-    outputs = ['nada', ]
+
+def serialize_hillas_moment(moments):
+    r = []
+    for obj in moments:
+        if isinstance(obj, astropy.units.Quantity):
+            r.append({'__value__': obj.value, '__unit__': obj.unit.name})
+        else:
+            r.append({'__value__': obj})
+    return r
+
+
+def serialize_dict_with_units(dct):
+    d = {}
+    for k, v in dct.items():
+        if isinstance(v, float) and np.isnan(v):
+            d[k] = 'NaN'
+        elif isinstance(v, astropy.units.Quantity):
+            d[k] = {'__value__': v.value, '__unit__': v.unit.name}
+        elif isinstance(v, dict):
+            d[k] = serialize_dict_with_units(v)
+        else:
+            d[k] = v
+    return d
+
+
+class HillasErrorBolt(Bolt):
+    outputs = []
+    counter = 0
 
     def process(self, tup):
-        self.logger.info('---'*20)
-        self.logger.info(tup)
-        self.logger.info('---'*20)
-        self.emit(['de nada senior'])
+        self.counter += 1
+        self.logger.info('recieved error event number {}'.format(self.counter))
 
 
 class RecoBolt(Bolt):
 
-    outputs = ['reco']
+    outputs = ['reconstruction_result']
 
     def initialize(self, conf, ctx):
         source = hessio_event_source(file_path,  max_events=7)
@@ -49,17 +82,16 @@ class RecoBolt(Bolt):
 
     def process(self, tup):
         self.logger.info('recieved tuple')
-        self.logger.info(tup)
-        hillas_dict = tup.values.hillas
-        tel_phi = tup.values.tel_phi
-        tel_theta = tup.values.tel_theta
-        # hillas_dict = forMomentParameters._make(hillas_dict)
-        self.logger.info('calling reco')
-        r = self.reco(hillas_dict, tel_phi, tel_theta)
-        self.logger.info('emitting reco results')
-        self.emit([r])
+        hillas_dict = deserialize_hillas_dict(tup.values.hillas)
 
-    def reco(self, hillas_dict, tel_phi, tel_theta):
+        r = self.reco(hillas_dict).as_dict()
+        self.logger.info('emitting reco results')
+        self.emit([serialize_dict_with_units(r)])
+
+    def reco(self, hillas_dict):
+        tel_phi = {tel_id: 0*u.deg for tel_id in hillas_dict.keys()}
+        tel_theta = {tel_id: 20*u.deg for tel_id in hillas_dict.keys()}
+
         self.logger.info('Startign reco')
         fit_result = self.fitter.predict(hillas_dict, self.instrument, tel_phi, tel_theta)
         self.logger.info('Finished reco')
@@ -68,7 +100,8 @@ class RecoBolt(Bolt):
 
 class HillasBolt(Bolt):
 
-    outputs = ['hillas', 'tel_phi', 'tel_theta']
+    outputs = [Stream(fields=['hillas'], name='default'),
+               Stream(fields=['errors'], name='errors')]
 
     def initialize(self, conf, ctx):
         self.total_events = 0
@@ -82,19 +115,17 @@ class HillasBolt(Bolt):
         if self.total_events % 25 == 0:
             self.logger.info("counted [{:,}] events [pid={}]".format(self.total_events,
                                                                      self.pid))
-        hillas_dict, tel_phi, tel_theta = self.hillas(event)
-        self.logger.info('emitting hillas data')
-        self.emit([hillas_dict, tel_phi, tel_theta])
+        hillas_dict = self.hillas(event)
+        if hillas_dict:
+            self.logger.info('emitting hillas data')
+            self.emit([hillas_dict])
+        else:
+            self.emit([event['event_id']], stream='errors')
 
     def hillas(self, event):
         hillas_dict = {}
-        tel_phi = {}
-        tel_theta = {}
 
         for tel_id in event['data']:
-            tel_phi[tel_id] = 0.*u.deg
-            tel_theta[tel_id] = 20.*u.deg
-
             pmt_signal = np.array(event['data'][tel_id]['adc_sums'])
             pix_x = self.instrument.pixel_pos[int(tel_id)][0]
             pix_y = self.instrument.pixel_pos[int(tel_id)][1]
@@ -109,10 +140,10 @@ class HillasBolt(Bolt):
                 moments = hillas_parameters(cam_geom.pix_x,
                                             cam_geom.pix_y,
                                             pmt_signal)
-                # remove dem units bro
-                m = [t.value if isinstance(t, astropy.units.Quantity) else t for t in moments]
-                hillas_dict[tel_id] = MomentParameters._make(m)
-            except HillasParameterizationError as e:
-                print(e)
 
-        return hillas_dict, [t.value for t in tel_phi.values()], [t.value for t in tel_theta.values()]
+                hillas_dict[tel_id] = serialize_hillas_moment(moments)
+            except HillasParameterizationError as e:
+                self.logger.warn('Could not calculate hillas parameter')
+                return None
+
+        return hillas_dict
