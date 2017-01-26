@@ -1,4 +1,3 @@
-from ctapipe.io.hessio import hessio_event_source
 from streamparse import Bolt, Stream
 from ctapipe.image.cleaning import tailcuts_clean
 from ctapipe.io import CameraGeometry
@@ -11,14 +10,13 @@ import numpy as np
 
 from astropy import units as u
 import astropy
-# import simplejson
+import gzip
+import pickle
+import os.path
 
-file_path = '/home/kbruegge/gamma_test.simtel.gz'
+from functools import lru_cache
 
-
-# def decode_unit(dct):
-#     if '__unit__' in dct:
-#         return dct['__value__']*astropy.units.Unit(dct['__unit__'])
+WORKING_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 
 def deserialize_hillas_moment(moments):
@@ -62,6 +60,12 @@ def serialize_dict_with_units(dct):
     return d
 
 
+def load_instrument():
+    p = os.path.join(WORKING_DIR, 'bundled_files', 'instrument.pickle.gz')
+    with gzip.open(p, 'rb') as f:
+        return pickle.load(f)
+
+
 class HillasErrorBolt(Bolt):
     outputs = []
     counter = 0
@@ -76,8 +80,7 @@ class RecoBolt(Bolt):
     outputs = ['reconstruction_result']
 
     def initialize(self, conf, ctx):
-        source = hessio_event_source(file_path,  max_events=7)
-        self.instrument = next(source).inst
+        self.instrument = load_instrument()
         self.fitter = FitGammaHillas()
 
     def process(self, tup):
@@ -105,8 +108,7 @@ class HillasBolt(Bolt):
 
     def initialize(self, conf, ctx):
         self.total_events = 0
-        source = hessio_event_source(file_path,  max_events=7)
-        self.instrument = next(source).inst
+        self.instrument = load_instrument()
 
     def process(self, tup):
         event = tup.values[0]
@@ -122,15 +124,20 @@ class HillasBolt(Bolt):
         else:
             self.emit([event['event_id']], stream='errors')
 
+    @lru_cache(maxsize=128)
+    def get_cam_geom(self, tel_id):
+        pix_x = self.instrument.pixel_pos[int(tel_id)][0]
+        pix_y = self.instrument.pixel_pos[int(tel_id)][1]
+        foc = self.instrument.optical_foclen[int(tel_id)]
+        cam_geom = CameraGeometry.guess(pix_x, pix_y, foc)
+        return cam_geom
+
     def hillas(self, event):
         hillas_dict = {}
 
         for tel_id in event['data']:
             pmt_signal = np.array(event['data'][tel_id]['adc_sums'])
-            pix_x = self.instrument.pixel_pos[int(tel_id)][0]
-            pix_y = self.instrument.pixel_pos[int(tel_id)][1]
-            foc = self.instrument.optical_foclen[int(tel_id)]
-            cam_geom = CameraGeometry.guess(pix_x, pix_y, foc)
+            cam_geom = self.get_cam_geom(tel_id)
             # self.logger.info('calling tailcuts')
             mask = tailcuts_clean(cam_geom, pmt_signal, 1,
                                   picture_thresh=10., boundary_thresh=5.)

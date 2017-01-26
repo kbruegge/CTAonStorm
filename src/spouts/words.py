@@ -5,17 +5,17 @@ import time
 from ctapipe.io.hessio import hessio_event_source
 import copy
 import numpy as np
-import os
+import os.path as path
 
-
-file_path = '/home/kbruegge/gamma_test.simtel.gz'
+WORKING_DIR = path.dirname(path.dirname(path.realpath(__file__)))
+file_path = 'bundled_files/gamma_test.simtel.gz'
 
 
 class EventSpout(Spout):
     outputs = ['event']
 
     def initialize(self, stormconf, context):
-        source = hessio_event_source(file_path, max_events=7)
+        source = hessio_event_source(path.join(WORKING_DIR, file_path), max_events=7)
         event_list = list(copy.deepcopy(e) for e in source)
         events = []
         for e in event_list:
@@ -36,14 +36,3 @@ class EventSpout(Spout):
         event = next(self.event_generator)
         # print('Emitting thing!')
         self.emit([event])
-
-#
-# class WordSpout(Spout):
-#     outputs = ['word']
-#
-#     def initialize(self, stormconf, context):
-#         self.words = cycle(['dog', 'cat', 'zebra', 'elephant'])
-#
-#     def next_tuple(self):
-#         word = next(self.words)
-#         self.emit([word])
