@@ -2,7 +2,9 @@
   :resource-paths ["_resources"]
   :target-path "_build"
   :min-lein-version "2.0.0"
-  :jvm-opts ["-client"]
+  :jvm-opts ["-client", "-XX:MaxHeapSize=2048m", "-XX:InitialHeapSize=512m",
+             "-XX:CompressedClassSpaceSize=64m", "-XX:MaxMetaspaceSize=128m",
+             "-XX:+UseConcMarkSweepGC", "-XX:+UseParNewGC"]
   :dependencies  [[org.apache.storm/storm-core "1.0.2"]
                   [org.apache.storm/flux-core "1.0.2"]]
   :jar-exclusions     [#"log4j\.properties" #"org\.apache\.storm\.(?!flux)" #"trident" #"META-INF" #"meta-inf" #"\.yaml"]
