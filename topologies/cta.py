@@ -4,7 +4,7 @@ Event count topology
 
 from streamparse import Topology
 
-from bolts.wordcount import HillasBolt, RecoBolt, HillasErrorBolt
+from bolts.wordcount import HillasBolt, RecoBolt, HillasErrorBolt, RecoErrorBolt
 from spouts.words import EventSpout
 
 
@@ -13,5 +13,6 @@ class CTATopology(Topology):
     hillas_bolt = HillasBolt.spec(inputs=[word_spout])
     reco_bolt = RecoBolt.spec(inputs=[hillas_bolt])
 
+    # count events that have gone missing
     error_bolt = HillasErrorBolt.spec(inputs=[hillas_bolt['errors']])
-    # reco_bolt = RecoBolt.spec(inputs={hillas_bolt: Grouping.LOCAL_OR_SHUFFLE}, par=2)
+    reco_error_bolt = RecoErrorBolt.spec(inputs=[reco_bolt['errors']])

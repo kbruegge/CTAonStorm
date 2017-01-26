@@ -75,9 +75,19 @@ class HillasErrorBolt(Bolt):
         self.logger.info('recieved error event number {}'.format(self.counter))
 
 
+class RecoErrorBolt(Bolt):
+    outputs = []
+    counter = 0
+
+    def process(self, tup):
+        self.counter += 1
+        self.logger.info('recieved reco error event number {}'.format(self.counter))
+
+
 class RecoBolt(Bolt):
 
-    outputs = ['reconstruction_result']
+    outputs = [Stream(fields=['reconstruction_result'], name='default'),
+               Stream(fields=['errors'], name='errors')]
 
     def initialize(self, conf, ctx):
         self.instrument = load_instrument()
@@ -88,16 +98,27 @@ class RecoBolt(Bolt):
         hillas_dict = deserialize_hillas_dict(tup.values.hillas)
 
         r = self.reco(hillas_dict).as_dict()
-        self.logger.info('emitting reco results')
-        self.emit([serialize_dict_with_units(r)])
+        if r:
+            self.logger.info('emitting reco results')
+            self.emit([serialize_dict_with_units(r)])
+        else:
+            self.logger.warn('event not reconstructed')
+            self.emit([1], stream='errors')
 
     def reco(self, hillas_dict):
         tel_phi = {tel_id: 0*u.deg for tel_id in hillas_dict.keys()}
         tel_theta = {tel_id: 20*u.deg for tel_id in hillas_dict.keys()}
+        try:
+            self.logger.info('Startign reco')
+            fit_result = self.fitter.predict(
+                                    hillas_dict,
+                                    self.instrument,
+                                    tel_phi,
+                                    tel_theta)
 
-        self.logger.info('Startign reco')
-        fit_result = self.fitter.predict(hillas_dict, self.instrument, tel_phi, tel_theta)
-        self.logger.info('Finished reco')
+            self.logger.info('Finished reco')
+        except:
+            return None
         return fit_result
 
 
