@@ -13,6 +13,7 @@ import astropy
 import gzip
 import pickle
 import os.path
+import time
 
 from functools import lru_cache
 
@@ -64,6 +65,23 @@ def load_instrument():
     p = os.path.join(WORKING_DIR, 'bundled_files', 'instrument.pickle.gz')
     with gzip.open(p, 'rb') as f:
         return pickle.load(f)
+
+
+class PerfBolt(Bolt):
+    outputs = []
+    counter = 0
+    start_time = time.time()
+    sample = 500
+
+    def process(self, tup):
+        self.counter += 1
+        if self.counter % self.sample == 0:
+            self.counter = 0
+            current_time = time.time()
+            elapsed = current_time - self.start_time
+
+            events_per_sec = self.sample/elapsed
+            self.logger.info('recieving  {} event per second'.format(events_per_sec))
 
 
 class HillasErrorBolt(Bolt):

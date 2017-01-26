@@ -1,7 +1,7 @@
 from itertools import cycle
 
 from streamparse import Spout
-import time
+# import time
 from ctapipe.io.hessio import hessio_event_source
 import copy
 import numpy as np
@@ -32,7 +32,7 @@ class EventSpout(Spout):
         self.event_generator = cycle(events)
 
     def next_tuple(self):
-        time.sleep(1.0)
+        # time.sleep(0.1)
         event = next(self.event_generator)
         # print('Emitting thing!')
         self.emit([event])
