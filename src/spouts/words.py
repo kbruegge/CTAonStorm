@@ -15,8 +15,6 @@ class EventSpout(Spout):
     outputs = ['event']
 
     def initialize(self, stormconf, context):
-        self.logger.info('current dir {}'.format(os.getcwd()))
-        self.logger.info('current env {}'.format(os.getenv()))
         source = hessio_event_source(file_path, max_events=7)
         event_list = list(copy.deepcopy(e) for e in source)
         events = []
