@@ -1,22 +1,23 @@
 from itertools import cycle
 
 from streamparse import Spout
-# import time
-from ctapipe.io.hessio import hessio_event_source
-import copy
+
 import numpy as np
 import os.path as path
+import pickle
+import gzip
 
 WORKING_DIR = path.dirname(path.dirname(path.realpath(__file__)))
-file_path = 'bundled_files/gamma_test.simtel.gz'
 
 
 class EventSpout(Spout):
     outputs = ['event']
 
     def initialize(self, stormconf, context):
-        source = hessio_event_source(path.join(WORKING_DIR, file_path), max_events=7)
-        event_list = list(copy.deepcopy(e) for e in source)
+        p = path.join(WORKING_DIR, 'bundled_files', 'gammas.pickle.gz')
+        with gzip.open(p, 'rb') as f:
+            event_list = pickle.load(f)
+
         events = []
         for e in event_list:
             d = {
